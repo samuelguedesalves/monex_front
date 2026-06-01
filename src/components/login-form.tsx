@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
+import { PatternFormat } from "react-number-format"
 
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -18,19 +19,19 @@ import {
 import { Input } from "@/components/ui/input"
 
 const FormSchema = z.object({
-  email: z.string().email({
-    message: "Invalid email address.",
+  cpf: z.string().min(14, {
+    message: "CPF must be complete.",
   }),
-  password: z.string().min(8, {
-    message: "Password must be at least 8 characters.",
+  password: z.string().min(6, {
+    message: "Password must be at least 6 characters.",
   }),
 })
 
-export function InputForm() {
+export function LoginForm() {
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
-      email: "",
+      cpf: "",
       password: "",
     },
   })
@@ -48,23 +49,29 @@ export function InputForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="w-2/3 space-y-6">
+        <h1 className="text-2xl font-bold my-4">Login</h1>
         <FormField
           control={form.control}
-          name="email"
+          name="cpf"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>CPF</FormLabel>
               <FormControl>
-                <Input placeholder="Email" {...field} />
+                <PatternFormat
+                  format="###.###.###-##"
+                  mask="_"
+                  customInput={Input}
+                  placeholder="000.000.000-00"
+                  {...field}
+                />
               </FormControl>
               <FormDescription>
-                Please enter your email address.
+                Please enter your CPF.
               </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-        
         <FormField
           control={form.control}
           name="password"
@@ -75,15 +82,13 @@ export function InputForm() {
                 <Input placeholder="Password" {...field} />
               </FormControl>
               <FormDescription>
-                Password must be at least 8 characters.
+                Please enter your password.
               </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-
         <Button variant="link" className="block p-0">Forgot password?</Button>
-
         <Button type="submit" className="w-full">Submit</Button>
       </form>
     </Form>

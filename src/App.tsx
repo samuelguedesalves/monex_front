@@ -1,5 +1,4 @@
 import { Container } from "@/components/container";
-import { InputForm } from "@/components/login-form";
 import { Login } from "@/pages/login";
 export default function App() {
   return (
@@ -11,11 +10,7 @@ export default function App() {
       </div>
       <Login />
     </div>
-  )
-  
-  return (
-    <Container>
-      <InputForm/>
-    </Container>
-  )
+  );
+
+  return <Container>{/* <InputForm/> */}</Container>;
 }
