@@ -5,7 +5,7 @@ type Props = {
 };
 
 export function Header({ variant = "simple" }: Props) {
-  return variant != "simple" ? <SimpleHeader /> : <LoggedHeader />;
+  return variant === "simple" ? <SimpleHeader /> : <LoggedHeader />;
 }
 
 function SimpleHeader() {

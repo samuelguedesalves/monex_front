@@ -1,49 +1,47 @@
-"use client"
+"use client";
 
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { PatternFormat } from "react-number-format"
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/contexts/auth-context";
 
 const FormSchema = z.object({
-  cpf: z.string().min(14, {
-    message: "CPF must be complete.",
-  }),
+  email: z.email("Invalid email"),
   password: z.string().min(6, {
     message: "Password must be at least 6 characters.",
   }),
-})
+});
+
+type FormData = z.infer<typeof FormSchema>;
 
 export function LoginForm() {
-  const form = useForm<z.infer<typeof FormSchema>>({
+  const { login } = useAuth();
+  const form = useForm<FormData>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
-      cpf: "",
+      email: "",
       password: "",
     },
-  })
+  });
 
-  function onSubmit(data: z.infer<typeof FormSchema>) {
-    toast("You submitted the following values:", {
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
-    })
+  async function onSubmit(data: FormData) {
+    try {
+      await login(data.email, data.password);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Authentication failed");
+    }
   }
 
   return (
@@ -52,22 +50,13 @@ export function LoginForm() {
         <h1 className="text-2xl font-bold my-4">Login</h1>
         <FormField
           control={form.control}
-          name="cpf"
+          name="email"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>CPF</FormLabel>
+              <FormLabel>Email</FormLabel>
               <FormControl>
-                <PatternFormat
-                  format="###.###.###-##"
-                  mask="_"
-                  customInput={Input}
-                  placeholder="000.000.000-00"
-                  {...field}
-                />
+                <Input placeholder="Enter your email" {...field} />
               </FormControl>
-              <FormDescription>
-                Please enter your CPF.
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -79,18 +68,25 @@ export function LoginForm() {
             <FormItem>
               <FormLabel>Password</FormLabel>
               <FormControl>
-                <Input placeholder="Password" {...field} />
+                <Input type="password" placeholder="Enter your password" {...field} />
               </FormControl>
-              <FormDescription>
-                Please enter your password.
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button variant="link" className="block p-0">Forgot password?</Button>
-        <Button type="submit" className="w-full">Submit</Button>
+
+        <div className="grid grid-cols-1 gap-y-2">
+          <Button variant="link" className="block p-0 justify-self-start">
+            Forgot password?
+          </Button>
+          <Button type="submit" className="w-full">
+            Sign In
+          </Button>
+          <Button type="button" variant="secondary" className="w-full">
+            Sign Up
+          </Button>
+        </div>
       </form>
     </Form>
-  )
+  );
 }
