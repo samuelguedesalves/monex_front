@@ -1,5 +1,8 @@
+import { User as UserIcon } from "lucide-react";
 import { Container } from "@/components/container";
 import { QuitConfirmDialog } from "@/components/quit-confirm-dialog";
+import { useAuth } from "@/contexts/auth-context";
+import { useMemo } from "react";
 
 type Props = {
   variant: "simple" | "logged";
@@ -20,6 +23,16 @@ function SimpleHeader() {
 }
 
 function LoggedHeader() {
+  const { user } = useAuth();
+
+  const userFullName = useMemo(() => {
+    if (!user) {
+      console.error("[LoggedHeader] Error while retrieve user data");
+      return "Unknown";
+    }
+    return `${user?.firstName} ${user?.lastName.charAt(0)}.`;
+  }, [user]);
+
   return (
     <div className="py-4">
       <Container className="flex justify-between items-center">
@@ -27,12 +40,8 @@ function LoggedHeader() {
 
         <div className="flex items-center gap-x-12">
           <div className="flex items-center gap-x-4">
-            <img
-              className="w-8 h-8 rounded-full"
-              src="https://avatars.githubusercontent.com/u/29378652?v=4"
-              alt=""
-            />
-            <p>Samuel G.</p>
+            <UserIcon />
+            <p>{userFullName}</p>
           </div>
           <QuitConfirmDialog />
         </div>
