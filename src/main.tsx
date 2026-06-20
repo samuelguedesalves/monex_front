@@ -11,9 +11,26 @@ import { Toaster } from "@/components/ui/sonner";
 function RootLayout() {
   return (
     <AuthProvider>
-      <Header variant="simple" />
       <Outlet />
     </AuthProvider>
+  );
+}
+
+function PublicLayout() {
+  return (
+    <>
+      <Header variant="simple" />
+      <Outlet />
+    </>
+  );
+}
+
+function PrivateLayout() {
+  return (
+    <>
+      <Header variant="logged" />
+      <Outlet />
+    </>
   );
 }
 
@@ -22,15 +39,25 @@ const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       {
-        path: "/login",
-        element: <Login />,
+        element: <PublicLayout />,
+        children: [
+          {
+            path: "/login",
+            element: <Login />,
+          },
+        ],
       },
       {
         element: <PrivateRoute />,
         children: [
           {
-            path: "/",
-            element: <Dashboard />,
+            element: <PrivateLayout />,
+            children: [
+              {
+                path: "/",
+                element: <Dashboard />,
+              },
+            ],
           },
         ],
       },

@@ -1,4 +1,5 @@
 import { Container } from "@/components/container";
+import { QuitConfirmDialog } from "@/components/quit-confirm-dialog";
 
 type Props = {
   variant: "simple" | "logged";
@@ -33,10 +34,7 @@ function LoggedHeader() {
             />
             <p>Samuel G.</p>
           </div>
-          <button type="button" className="flex items-center gap-x-2">
-            Quit
-            <img src="./icons/exit.svg" alt="" />
-          </button>
+          <QuitConfirmDialog />
         </div>
       </Container>
     </div>
