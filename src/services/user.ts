@@ -15,6 +15,18 @@ const AUTH_USER_MUTATION = `
   }
 `;
 
+const CURRENT_USER_QUERY = `
+  query currentUser {
+    user {
+      id
+      firstName
+      lastName
+      email
+      balance
+    }
+  }
+`;
+
 export type AuthUser = {
   id: string;
   firstName: string;
@@ -55,6 +67,38 @@ export async function authUser(
   const result = json.data?.authUser;
   if (!result) {
     throw new Error("Authentication failed");
+  }
+
+  return result;
+}
+
+export async function getCurrentUser(token: string): Promise<AuthUser> {
+  const response = await fetch(GQL_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      query: CURRENT_USER_QUERY,
+      operationName: "currentUser",
+      variables: {},
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Network error: ${response.status}`);
+  }
+
+  const json = await response.json();
+
+  if (json.errors?.length) {
+    throw new Error(json.errors[0].message);
+  }
+
+  const result = json.data?.user;
+  if (!result) {
+    throw new Error("Failed to load current user");
   }
 
   return result;

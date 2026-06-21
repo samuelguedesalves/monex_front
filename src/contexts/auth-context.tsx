@@ -5,7 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router";
-import { authUser as authUserService, type AuthUser, type AuthResult } from "@/services/user";
+import { authUser as authUserService, getCurrentUser, type AuthUser, type AuthResult } from "@/services/user";
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
@@ -18,6 +18,7 @@ type AuthState = {
 type AuthContextValue = AuthState & {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -60,8 +61,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate("/login");
   }
 
+  async function refreshUser() {
+    if (!state.token) {
+      return;
+    }
+    const user = await getCurrentUser(state.token);
+    try {
+      sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    } catch {
+      // sessionStorage unavailable — continue with in-memory only
+    }
+    setState((prev) => ({ ...prev, user }));
+  }
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
+    <AuthContext.Provider value={{ ...state, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
