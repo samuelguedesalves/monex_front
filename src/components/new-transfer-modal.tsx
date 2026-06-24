@@ -45,7 +45,13 @@ const steps = [
   { id: DONE_STEP_ID, name: "Done" },
 ] as const;
 
-export function NewTransferDialog() {
+type NewTransferDialogProps = {
+  onTransferComplete?: VoidFunction;
+};
+
+export function NewTransferDialog({
+  onTransferComplete,
+}: NewTransferDialogProps) {
   const [open, setOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState<number>(steps[0].id);
   const [recipient, setRecipient] = useState<TransferRecipient | null>(null);
@@ -117,6 +123,7 @@ export function NewTransferDialog() {
             amount={amount}
             goNext={() => setCurrentStep(4)}
             goPrevious={() => setCurrentStep(2)}
+            onTransferComplete={onTransferComplete}
           />
         )}
         {currentStep === 4 && (
@@ -300,11 +307,13 @@ function Confirm({
   amount,
   goNext,
   goPrevious,
+  onTransferComplete,
 }: {
   recipient: TransferRecipient;
   amount: string;
   goNext: VoidFunction;
   goPrevious: VoidFunction;
+  onTransferComplete?: VoidFunction;
 }) {
   const { token, refreshUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -320,6 +329,7 @@ function Confirm({
       // Transaction settlement happens async on the backend (Oban worker), so
       // this may briefly show the pre-transfer balance under load.
       await refreshUser();
+      onTransferComplete?.();
       goNext();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Transfer failed");

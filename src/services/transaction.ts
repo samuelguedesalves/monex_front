@@ -23,6 +23,25 @@ const CREATE_TRANSACTION_MUTATION = `
   }
 `;
 
+const TRANSACTIONS_FROM_USER_QUERY = `
+  query transactionsFromUser($page: Int!) {
+    transactionsFromUser(page: $page) {
+      transactions {
+        id
+        amount
+        fromUser
+        toUser
+        processedAt
+        status
+      }
+      page
+      previousPage
+      nextPage
+      quantity
+    }
+  }
+`;
+
 export type TransferRecipient = {
   id: number;
   firstName: string;
@@ -36,6 +55,15 @@ export type Transaction = {
   fromUser: number;
   toUser: number;
   processedAt: string;
+  status: string;
+};
+
+export type TransactionsPage = {
+  transactions: Transaction[];
+  page: number;
+  previousPage: number;
+  nextPage: number;
+  quantity: number;
 };
 
 async function gqlRequest<T>(
@@ -92,4 +120,18 @@ export async function createTransaction(
   );
 
   return data.createTransaction;
+}
+
+export async function listTransactionsFromUser(
+  page: number,
+  token: string
+): Promise<TransactionsPage> {
+  const data = await gqlRequest<{ transactionsFromUser: TransactionsPage }>(
+    TRANSACTIONS_FROM_USER_QUERY,
+    "transactionsFromUser",
+    { page },
+    token
+  );
+
+  return data.transactionsFromUser;
 }

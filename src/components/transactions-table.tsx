@@ -8,22 +8,82 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-import { listTransactions } from "@/services/transactions";
-// import { ArrowLeft, ArrowRight } from "lucide-react";
-
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
+import { formatMoney } from "@/lib/numberFormatter";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+  listTransactionsFromUser,
+  type Transaction,
+} from "@/services/transaction";
+import { useEffect, useRef, useState } from "react";
 
-export function TransactionsTable() {
-  const transactions = listTransactions();
+const PAGE_SIZE = 10;
+const COLUMN_COUNT = 5;
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+type TransactionsTableProps = {
+  refreshKey?: number;
+};
+
+export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
+  const { token } = useAuth();
+  const [page, setPage] = useState(1);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [quantity, setQuantity] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const previousRefreshKey = useRef(refreshKey);
+  const requestedPage = useRef<number | null>(null);
+
+  async function fetchTransactions() {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    requestedPage.current = page;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await listTransactionsFromUser(page, token);
+      if (requestedPage.current !== page) {
+        return;
+      }
+      setTransactions(result.transactions);
+      setQuantity(result.quantity);
+    } catch (err) {
+      if (requestedPage.current !== page) {
+        return;
+      }
+      setError(
+        err instanceof Error ? err.message : "Failed to load transactions"
+      );
+      setTransactions([]);
+      setQuantity(0);
+    } finally {
+      if (requestedPage.current === page) {
+        setLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (refreshKey !== previousRefreshKey.current) {
+      previousRefreshKey.current = refreshKey;
+      if (page !== 1) {
+        setPage(1);
+        return;
+      }
+    }
+    fetchTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, refreshKey]);
+
+  const hasPrevious = page > 1;
+  const hasNext = quantity === PAGE_SIZE;
+
   return (
     <Table>
       <TableCaption>A list of your recent transactions.</TableCaption>
@@ -32,68 +92,80 @@ export function TransactionsTable() {
           <TableHead className="w-[100px]">ID</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Details</TableHead>
+          <TableHead>Date</TableHead>
           <TableHead className="text-right">Amount</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {transactions.map((transaction) => (
-          <TableRow key={transaction.id}>
-            <TableCell className="font-medium">{transaction.id}</TableCell>
-            <TableCell>{transaction.paymentStatus}</TableCell>
-            <TableCell>{transaction.paymentDetails}</TableCell>
-            <TableCell className="text-right">
-              {transaction.totalAmount}
+        {loading && (
+          <TableRow>
+            <TableCell colSpan={COLUMN_COUNT} className="text-center">
+              Loading transactions…
             </TableCell>
           </TableRow>
-        ))}
+        )}
+        {!loading && error && (
+          <TableRow>
+            <TableCell colSpan={COLUMN_COUNT} className="text-center">
+              <div className="flex items-center justify-center gap-x-2">
+                <span>{error}</span>
+                <Button variant="secondary" size="sm" onClick={fetchTransactions}>
+                  Retry
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        )}
+        {!loading && !error && transactions.length === 0 && (
+          <TableRow>
+            <TableCell colSpan={COLUMN_COUNT} className="text-center">
+              No transactions yet.
+            </TableCell>
+          </TableRow>
+        )}
+        {!loading &&
+          !error &&
+          transactions.map((transaction) => (
+            <TableRow key={transaction.id}>
+              <TableCell className="font-medium">{transaction.id}</TableCell>
+              <TableCell>{capitalize(transaction.status)}</TableCell>
+              <TableCell>
+                From: {transaction.fromUser} → To: {transaction.toUser}
+              </TableCell>
+              <TableCell>
+                {new Date(transaction.processedAt).toLocaleString()}
+              </TableCell>
+              <TableCell className="text-right">
+                {formatMoney(transaction.amount)}
+              </TableCell>
+            </TableRow>
+          ))}
       </TableBody>
       <TableFooter>
         <TableRow>
-          {/* <TableCell>1000 transactions</TableCell> */}
-          {/* <TableCell colSpan={2} /> */}
-          <TableCell colSpan={4}>
-            <TransactionPagination />
-            {/* <Button variant="secondary">
-              <ArrowLeft />
-            </Button>
-            <Button variant="secondary">
-              <ArrowRight />
-            </Button> */}
+          <TableCell colSpan={COLUMN_COUNT}>
+            <div className="flex items-center justify-center gap-x-4">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!hasPrevious || loading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span>Page {page}</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!hasNext || loading}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </TableCell>
-          {/* pagination */}
-          {/* <TableCell colSpan={3}>Total</TableCell>
-          <TableCell className="text-right">$2,500.00</TableCell> */}
         </TableRow>
       </TableFooter>
     </Table>
-  );
-}
-
-export function TransactionPagination() {
-  return (
-    <Pagination>
-      <PaginationContent>
-        <PaginationItem>
-          <PaginationPrevious href="#" />
-        </PaginationItem>
-        <PaginationItem>
-          <PaginationLink href="#" isActive>
-            1
-          </PaginationLink>
-        </PaginationItem>
-        <PaginationItem>
-          <PaginationLink href="#">2</PaginationLink>
-        </PaginationItem>
-        <PaginationItem>
-          <PaginationLink href="#">3</PaginationLink>
-        </PaginationItem>
-        <PaginationItem>
-          <PaginationEllipsis />
-        </PaginationItem>
-        <PaginationItem>
-          <PaginationNext href="#" />
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
   );
 }

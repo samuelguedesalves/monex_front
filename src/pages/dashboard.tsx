@@ -3,20 +3,26 @@ import { NewTransferDialog } from "@/components/new-transfer-modal";
 import { TransactionsTable } from "@/components/transactions-table";
 import { useAuth } from "@/contexts/auth-context";
 import { formatMoney } from "@/lib/numberFormatter";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 export function Dashboard() {
+  const [refreshKey, setRefreshKey] = useState(0);
+
   return (
     <div>
       <Container className="grid grid-cols-1 gap-y-4">
-        <Summary />
-        <TransactionsTable />
+        <Summary onTransferComplete={() => setRefreshKey((k) => k + 1)} />
+        <TransactionsTable refreshKey={refreshKey} />
       </Container>
     </div>
   );
 }
 
-function Summary() {
+function Summary({
+  onTransferComplete,
+}: {
+  onTransferComplete?: VoidFunction;
+}) {
   const { user } = useAuth();
 
   const balance = useMemo(() => {
@@ -36,7 +42,7 @@ function Summary() {
           <p className="text-xl">{balance}</p>
         </div>
       </div>
-      <NewTransferDialog />
+      <NewTransferDialog onTransferComplete={onTransferComplete} />
     </div>
   );
 }

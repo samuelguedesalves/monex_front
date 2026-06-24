@@ -10,5 +10,8 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  server: {
+    allowedHosts: ['graded-chill-deviator.ngrok-free.dev']
   }
 })
