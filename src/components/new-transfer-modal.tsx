@@ -29,11 +29,12 @@ import { Separator } from "@/components/ui/separator";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
+import { useLazyQuery, useMutation } from "@apollo/client/react";
 import {
-  getUserByEmail,
-  createTransaction,
+  USER_BY_EMAIL_QUERY,
+  CREATE_TRANSACTION_MUTATION,
   type TransferRecipient,
-} from "@/services/transaction";
+} from "@/graphql/transaction";
 import { formatMoney } from "@/lib/numberFormatter";
 import { toast } from "sonner";
 
@@ -151,7 +152,9 @@ type SearchAccountProps = {
 };
 
 function SearchAccount({ goNext }: SearchAccountProps) {
-  const { token } = useAuth();
+  const [searchUser] = useLazyQuery<{
+    userByEmail: TransferRecipient | null;
+  }>(USER_BY_EMAIL_QUERY);
   const form = useForm<findUserFormData>({
     resolver: zodResolver(findUserFormSchema),
     defaultValues: {
@@ -161,12 +164,14 @@ function SearchAccount({ goNext }: SearchAccountProps) {
 
   const onSubmit: SubmitHandler<findUserFormData> = async (data) => {
     try {
-      const user = await getUserByEmail(data.accountEmail, token!);
+      const { data: result } = await searchUser({
+        variables: { email: data.accountEmail },
+      });
+      const user = result?.userByEmail;
       if (!user) {
         throw new Error(
           "[NewTransferModal / SearchAccount] error to retrieve receiver user data",
         );
-        return;
       }
       goNext(user);
     } catch (err) {
@@ -315,17 +320,20 @@ function Confirm({
   goPrevious: VoidFunction;
   onTransferComplete?: VoidFunction;
 }) {
-  const { token, refreshUser } = useAuth();
+  const { refreshUser } = useAuth();
+  const [createTransactionMutation] = useMutation<
+    { createTransaction: { id: number } },
+    { amount: number; userId: number }
+  >(CREATE_TRANSACTION_MUTATION);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleConfirm() {
     setIsSubmitting(true);
     try {
       const amountInCents = Math.round(Number(amount) * 100);
-      await createTransaction(
-        { amount: amountInCents, userId: recipient.id },
-        token!,
-      );
+      await createTransactionMutation({
+        variables: { amount: amountInCents, userId: recipient.id },
+      });
       // Transaction settlement happens async on the backend (Oban worker), so
       // this may briefly show the pre-transfer balance under load.
       await refreshUser();

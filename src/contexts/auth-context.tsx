@@ -5,7 +5,16 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router";
-import { authUser as authUserService, getCurrentUser, type AuthUser, type AuthResult } from "@/services/user";
+import { useMutation, useLazyQuery } from "@apollo/client/react";
+import {
+  AUTH_USER_MUTATION,
+  CURRENT_USER_QUERY,
+  type AuthUser,
+} from "@/graphql/user";
+
+type AuthUserMutationData = { authUser: { user: AuthUser; token: string } };
+type AuthUserMutationVars = { email: string; password: string };
+type CurrentUserQueryData = { user: AuthUser };
 
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
@@ -38,8 +47,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { token: null, user: null };
   });
 
+  const [authUserMutation] = useMutation<
+    AuthUserMutationData,
+    AuthUserMutationVars
+  >(AUTH_USER_MUTATION);
+  const [fetchCurrentUser] = useLazyQuery<CurrentUserQueryData>(
+    CURRENT_USER_QUERY,
+    {
+      fetchPolicy: "network-only",
+    }
+  );
+
   async function login(email: string, password: string) {
-    const { user, token }: AuthResult = await authUserService(email, password);
+    const { data } = await authUserMutation({ variables: { email, password } });
+    if (!data?.authUser) {
+      throw new Error("Authentication failed");
+    }
+    const { user, token } = data.authUser;
     try {
       sessionStorage.setItem(TOKEN_KEY, token);
       sessionStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -65,7 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!state.token) {
       return;
     }
-    const user = await getCurrentUser(state.token);
+    const { data } = await fetchCurrentUser();
+    if (!data?.user) {
+      throw new Error("Failed to load current user");
+    }
+    const user = data.user;
     try {
       sessionStorage.setItem(USER_KEY, JSON.stringify(user));
     } catch {

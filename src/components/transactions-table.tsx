@@ -11,10 +11,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { formatMoney } from "@/lib/numberFormatter";
+import { useQuery } from "@apollo/client/react";
 import {
-  listTransactionsFromUser,
-  type Transaction,
-} from "@/services/transaction";
+  TRANSACTIONS_FROM_USER_QUERY,
+  type TransactionsPage,
+} from "@/graphql/transaction";
 import { useEffect, useRef, useState } from "react";
 
 const PAGE_SIZE = 10;
@@ -31,43 +32,15 @@ type TransactionsTableProps = {
 export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
   const { token } = useAuth();
   const [page, setPage] = useState(1);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [quantity, setQuantity] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const previousRefreshKey = useRef(refreshKey);
-  const requestedPage = useRef<number | null>(null);
 
-  async function fetchTransactions() {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    requestedPage.current = page;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await listTransactionsFromUser(page, token);
-      if (requestedPage.current !== page) {
-        return;
-      }
-      setTransactions(result.transactions);
-      setQuantity(result.quantity);
-    } catch (err) {
-      if (requestedPage.current !== page) {
-        return;
-      }
-      setError(
-        err instanceof Error ? err.message : "Failed to load transactions"
-      );
-      setTransactions([]);
-      setQuantity(0);
-    } finally {
-      if (requestedPage.current === page) {
-        setLoading(false);
-      }
-    }
-  }
+  const { data, loading, error, refetch } = useQuery<{
+    transactionsFromUser: TransactionsPage;
+  }>(TRANSACTIONS_FROM_USER_QUERY, {
+    variables: { page },
+    skip: !token,
+    fetchPolicy: "network-only",
+  });
 
   useEffect(() => {
     if (refreshKey !== previousRefreshKey.current) {
@@ -76,10 +49,16 @@ export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
         setPage(1);
         return;
       }
+      refetch();
     }
-    fetchTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, refreshKey]);
+  }, [refreshKey]);
+
+  const transactions = data?.transactionsFromUser.transactions ?? [];
+  const quantity = data?.transactionsFromUser.quantity ?? 0;
+  const errorMessage = error
+    ? error.message || "Failed to load transactions"
+    : null;
 
   const hasPrevious = page > 1;
   const hasNext = quantity === PAGE_SIZE;
@@ -104,19 +83,19 @@ export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
             </TableCell>
           </TableRow>
         )}
-        {!loading && error && (
+        {!loading && errorMessage && (
           <TableRow>
             <TableCell colSpan={COLUMN_COUNT} className="text-center">
               <div className="flex items-center justify-center gap-x-2">
-                <span>{error}</span>
-                <Button variant="secondary" size="sm" onClick={fetchTransactions}>
+                <span>{errorMessage}</span>
+                <Button variant="secondary" size="sm" onClick={() => refetch()}>
                   Retry
                 </Button>
               </div>
             </TableCell>
           </TableRow>
         )}
-        {!loading && !error && transactions.length === 0 && (
+        {!loading && !errorMessage && transactions.length === 0 && (
           <TableRow>
             <TableCell colSpan={COLUMN_COUNT} className="text-center">
               No transactions yet.
@@ -124,7 +103,7 @@ export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
           </TableRow>
         )}
         {!loading &&
-          !error &&
+          !errorMessage &&
           transactions.map((transaction) => (
             <TableRow key={transaction.id}>
               <TableCell className="font-medium">{transaction.id}</TableCell>
