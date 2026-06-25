@@ -13,10 +13,13 @@ import { useAuth } from "@/contexts/auth-context";
 import { formatMoney } from "@/lib/numberFormatter";
 import { useQuery } from "@apollo/client/react";
 import {
+  Transaction,
   TRANSACTIONS_FROM_USER_QUERY,
+  TransactionUser,
   type TransactionsPage,
 } from "@/graphql/transaction";
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 const PAGE_SIZE = 10;
 const COLUMN_COUNT = 5;
@@ -30,7 +33,7 @@ type TransactionsTableProps = {
 };
 
 export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [page, setPage] = useState(1);
   const previousRefreshKey = useRef(refreshKey);
 
@@ -63,16 +66,33 @@ export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
   const hasPrevious = page > 1;
   const hasNext = quantity === PAGE_SIZE;
 
+  function buildFullName({ firstName, lastName }: TransactionUser) {
+    return [firstName, lastName].join(" ");
+  }
+
+  function transactionNature(transaction: Transaction): "outcome" | "income" {
+    if (transaction.senderUser.id === user!.id) return "outcome";
+    return "income";
+  }
+
+  function buildTransactionDetails(transaction: Transaction) {
+    if (transactionNature(transaction) === "outcome") {
+      return `Transaction sent to ${buildFullName(transaction.receiverUser)}`;
+    }
+
+    return `Transaction received from ${buildFullName(transaction.senderUser)}`;
+  }
+
   return (
     <Table>
       <TableCaption>A list of your recent transactions.</TableCaption>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[100px]">ID</TableHead>
-          <TableHead>Status</TableHead>
+          <TableHead className="w-[100px]"></TableHead>
           <TableHead>Details</TableHead>
-          <TableHead>Date</TableHead>
           <TableHead className="text-right">Amount</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Date</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -106,16 +126,20 @@ export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
           !errorMessage &&
           transactions.map((transaction) => (
             <TableRow key={transaction.id}>
-              <TableCell className="font-medium">{transaction.id}</TableCell>
-              <TableCell>{capitalize(transaction.status)}</TableCell>
-              <TableCell>
-                From: {transaction.fromUser} → To: {transaction.toUser}
+              <TableCell className="font-medium">
+                {transactionNature(transaction) === "outcome" ? (
+                  <ChevronDown className="text-red-500" />
+                ) : (
+                  <ChevronUp className="text-green-500" />
+                )}
               </TableCell>
-              <TableCell>
-                {new Date(transaction.processedAt).toLocaleString()}
-              </TableCell>
+              <TableCell>{buildTransactionDetails(transaction)}</TableCell>
               <TableCell className="text-right">
                 {formatMoney(transaction.amount)}
+              </TableCell>
+              <TableCell>{capitalize(transaction.status)}</TableCell>
+              <TableCell>
+                {new Date(transaction.processedAt).toLocaleString()}
               </TableCell>
             </TableRow>
           ))}

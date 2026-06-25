@@ -29,8 +29,16 @@ export const TRANSACTIONS_FROM_USER_QUERY = gql`
       transactions {
         id
         amount
-        fromUser
-        toUser
+        senderUser {
+          id
+          firstName
+          lastName
+        }
+        receiverUser {
+          id
+          firstName
+          lastName
+        }
         processedAt
         status
       }
@@ -49,10 +57,17 @@ export type TransferRecipient = {
   email: string;
 };
 
+export type TransactionUser = {
+  id: string
+  firstName: string
+  lastName: string
+}
+
 export type Transaction = {
   id: number;
   amount: number;
-  fromUser: number;
+  senderUser: TransactionUser;
+  receiverUser: TransactionUser;
   toUser: number;
   processedAt: string;
   status: string;
