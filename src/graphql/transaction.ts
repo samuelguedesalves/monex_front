@@ -23,6 +23,15 @@ export const CREATE_TRANSACTION_MUTATION = gql`
   }
 `;
 
+export const TRANSACTION_STATUS_QUERY = gql`
+  query transactionStatus($id: Int!) {
+    transaction(id: $id) {
+      id
+      status
+    }
+  }
+`;
+
 export const TRANSACTIONS_FROM_USER_QUERY = gql`
   query transactionsFromUser($page: Int!) {
     transactionsFromUser(page: $page) {
@@ -56,6 +65,8 @@ export type TransferRecipient = {
   lastName: string;
   email: string;
 };
+
+export type TransactionStatus = "pending" | "processing" | "done" | "refuse";
 
 export type TransactionUser = {
   id: string

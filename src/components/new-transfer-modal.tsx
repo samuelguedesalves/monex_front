@@ -22,17 +22,23 @@ import {
   CircleDashed,
   CircleCheck,
   Circle,
+  CircleX,
   CheckCircle2,
+  XCircle,
+  Clock,
   Loader,
+  Loader2,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
-import { useLazyQuery, useMutation } from "@apollo/client/react";
+import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import {
   USER_BY_EMAIL_QUERY,
   CREATE_TRANSACTION_MUTATION,
+  TRANSACTION_STATUS_QUERY,
+  type TransactionStatus,
   type TransferRecipient,
 } from "@/graphql/transaction";
 import { formatMoney } from "@/lib/numberFormatter";
@@ -43,8 +49,13 @@ const steps = [
   { id: 1, name: "Set Account" },
   { id: 2, name: "Set Value" },
   { id: 3, name: "Confirm" },
-  { id: DONE_STEP_ID, name: "Done" },
+  { id: DONE_STEP_ID, name: "Result" },
 ] as const;
+
+const POLL_INTERVAL_MS = 1000;
+const POLL_TIMEOUT_MS = 15000;
+
+type TransferOutcome = "processing" | "done" | "refused" | "unknown";
 
 type NewTransferDialogProps = {
   onTransferComplete?: VoidFunction;
@@ -57,14 +68,21 @@ export function NewTransferDialog({
   const [currentStep, setCurrentStep] = useState<number>(steps[0].id);
   const [recipient, setRecipient] = useState<TransferRecipient | null>(null);
   const [amount, setAmount] = useState<string>("");
+  const [transactionId, setTransactionId] = useState<number | null>(null);
+  const [outcome, setOutcome] = useState<TransferOutcome>("processing");
 
   function reset() {
     setCurrentStep(steps[0].id);
     setRecipient(null);
     setAmount("");
+    setTransactionId(null);
+    setOutcome("processing");
   }
 
   function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen && currentStep === DONE_STEP_ID && outcome === "processing") {
+      onTransferComplete?.();
+    }
     setOpen(nextOpen);
     if (!nextOpen) {
       reset();
@@ -86,12 +104,21 @@ export function NewTransferDialog({
         <div className="grid grid-cols-4">
           {steps.map((step) => (
             <div className="flex flex-col items-center" key={step.id}>
-              {step.id === currentStep && currentStep != DONE_STEP_ID && (
+              {step.id === currentStep && step.id !== DONE_STEP_ID && (
                 <Circle />
               )}
-              {(step.id < currentStep || currentStep == DONE_STEP_ID) && (
-                <CircleCheck />
-              )}
+              {step.id < currentStep && <CircleCheck />}
+              {step.id === DONE_STEP_ID &&
+                currentStep === DONE_STEP_ID &&
+                (outcome === "processing" ? (
+                  <Loader2 className="animate-spin" />
+                ) : outcome === "done" ? (
+                  <CircleCheck />
+                ) : outcome === "refused" ? (
+                  <CircleX className="text-destructive" />
+                ) : (
+                  <Circle />
+                ))}
               {step.id > currentStep && <CircleDashed />}
               <p className={cn(step.id === currentStep && "font-bold")}>
                 {step.name}
@@ -122,15 +149,26 @@ export function NewTransferDialog({
           <Confirm
             recipient={recipient!}
             amount={amount}
-            goNext={() => setCurrentStep(4)}
+            goNext={(id) => {
+              setTransactionId(id);
+              setOutcome("processing");
+              setCurrentStep(DONE_STEP_ID);
+            }}
             goPrevious={() => setCurrentStep(2)}
-            onTransferComplete={onTransferComplete}
           />
         )}
-        {currentStep === 4 && (
-          <Success
+        {currentStep === DONE_STEP_ID && (
+          <Result
+            transactionId={transactionId!}
             recipient={recipient!}
             amount={amount}
+            onOutcome={setOutcome}
+            onTransferComplete={onTransferComplete}
+            onRetry={() => {
+              setTransactionId(null);
+              setOutcome("processing");
+              setCurrentStep(2);
+            }}
             onDone={() => handleOpenChange(false)}
           />
         )}
@@ -312,15 +350,12 @@ function Confirm({
   amount,
   goNext,
   goPrevious,
-  onTransferComplete,
 }: {
   recipient: TransferRecipient;
   amount: string;
-  goNext: VoidFunction;
+  goNext: (transactionId: number) => void;
   goPrevious: VoidFunction;
-  onTransferComplete?: VoidFunction;
 }) {
-  const { refreshUser } = useAuth();
   const [createTransactionMutation] = useMutation<
     { createTransaction: { id: number } },
     { amount: number; userId: number }
@@ -331,14 +366,11 @@ function Confirm({
     setIsSubmitting(true);
     try {
       const amountInCents = Math.round(Number(amount) * 100);
-      await createTransactionMutation({
+      const { data } = await createTransactionMutation({
         variables: { amount: amountInCents, userId: recipient.id },
       });
-      // Transaction settlement happens async on the backend (Oban worker), so
-      // this may briefly show the pre-transfer balance under load.
-      await refreshUser();
-      onTransferComplete?.();
-      goNext();
+      if (!data) throw new Error("Transfer failed");
+      goNext(data.createTransaction.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Transfer failed");
     } finally {
@@ -386,25 +418,133 @@ function Confirm({
   );
 }
 
-// Success
+// Result
 
-function Success({
+function Result({
+  transactionId,
   recipient,
   amount,
+  onOutcome,
+  onTransferComplete,
+  onRetry,
   onDone,
 }: {
+  transactionId: number;
   recipient: TransferRecipient;
   amount: string;
+  onOutcome: (outcome: TransferOutcome) => void;
+  onTransferComplete?: VoidFunction;
+  onRetry: VoidFunction;
   onDone: VoidFunction;
 }) {
+  const { refreshUser } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
+  const { data, error, stopPolling } = useQuery<
+    { transaction: { id: number; status: TransactionStatus } | null },
+    { id: number }
+  >(TRANSACTION_STATUS_QUERY, {
+    variables: { id: transactionId },
+    fetchPolicy: "network-only",
+    pollInterval: POLL_INTERVAL_MS,
+    skip: timedOut,
+  });
+
+  const status = data?.transaction?.status;
+  const outcome: TransferOutcome =
+    status === "done"
+      ? "done"
+      : status === "refuse"
+        ? "refused"
+        : timedOut || error
+          ? "unknown"
+          : "processing";
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTimedOut(true), POLL_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const notifiedRef = useRef(false);
+  useEffect(() => {
+    onOutcome(outcome);
+    if (outcome !== "processing") stopPolling();
+    if (outcome === "processing" || notifiedRef.current) return;
+    notifiedRef.current = true;
+    if (outcome === "done") {
+      void refreshUser();
+    }
+    onTransferComplete?.();
+  }, [outcome, onOutcome, onTransferComplete, refreshUser, stopPolling]);
+
+  const formattedAmount = formatMoney(Math.round(Number(amount) * 100));
+  const recipientName = `${recipient.firstName} ${recipient.lastName}`;
+
+  if (outcome === "processing") {
+    return (
+      <div className="grid grid-cols-1 gap-y-4">
+        <div className="flex flex-col items-center gap-y-2 text-center">
+          <Loader2 className="size-10 animate-spin text-muted-foreground" />
+          <p className="text-base leading-none font-medium">Processing…</p>
+          <p className="text-muted-foreground">
+            Waiting for the transfer of {formattedAmount} to {recipientName} to
+            be settled.
+          </p>
+        </div>
+        <Button onClick={onDone} variant="secondary">
+          Close
+        </Button>
+      </div>
+    );
+  }
+
+  if (outcome === "done") {
+    return (
+      <div className="grid grid-cols-1 gap-y-4">
+        <div className="flex flex-col items-center gap-y-2 text-center">
+          <CheckCircle2 className="size-10 text-primary" />
+          <p className="text-base leading-none font-medium">
+            Transfer complete
+          </p>
+          <p className="text-muted-foreground">
+            {formattedAmount} sent to {recipientName}.
+          </p>
+        </div>
+        <Button onClick={onDone}>Done</Button>
+      </div>
+    );
+  }
+
+  if (outcome === "refused") {
+    return (
+      <div className="grid grid-cols-1 gap-y-4">
+        <div className="flex flex-col items-center gap-y-2 text-center">
+          <XCircle className="size-10 text-destructive" />
+          <p className="text-base leading-none font-medium">
+            Transfer refused
+          </p>
+          <p className="text-muted-foreground">
+            Insufficient balance to send {formattedAmount} to {recipientName}.
+            No money was moved.
+          </p>
+        </div>
+        <Button onClick={onRetry}>Try again</Button>
+        <Button variant="secondary" onClick={onDone}>
+          Close
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 gap-y-4">
       <div className="flex flex-col items-center gap-y-2 text-center">
-        <CheckCircle2 className="size-10 text-primary" />
-        <p className="text-base leading-none font-medium">Transfer complete</p>
+        <Clock className="size-10 text-muted-foreground" />
+        <p className="text-base leading-none font-medium">
+          Still processing
+        </p>
         <p className="text-muted-foreground">
-          {formatMoney(Math.round(Number(amount) * 100))} sent to{" "}
-          {recipient.firstName} {recipient.lastName}.
+          We couldn't confirm the result of this transfer yet. Check its status
+          in your transactions list.
         </p>
       </div>
       <Button onClick={onDone}>Done</Button>
