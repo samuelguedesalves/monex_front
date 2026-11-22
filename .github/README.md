@@ -9,6 +9,7 @@ Monex is a toy banking app: users sign in, check their balance, send money to ot
 - **Sign in** with email and password. The session is stored in `sessionStorage`, so it ends when the tab is closed.
 - **Dashboard** showing the current balance and a paginated list of transactions, sent and received.
 - **New transfer** flow in four steps: find the recipient by email, enter the amount, confirm, then wait for the result. The result step polls the API until the transaction is `done` or `refuse`d. If it is still pending after 15 seconds, the dialog tells the user to check the transaction list.
+- **Notifications**: a bell in the header shows how many notifications are unread and checks again every 30 seconds. Clicking it opens a paginated list (10 per page) of personal notifications, such as a refused transfer, and global ones sent to every user. Clicking an unread notification marks it as read, and **Mark all as read** marks the whole list.
 - **Automatic logout** when the API answers `unauthenticated`, for example when the token has expired.
 
 ## Tech stack
@@ -87,6 +88,7 @@ src/
 │   ├── header.tsx
 │   ├── login-form.tsx
 │   ├── new-transfer-modal.tsx
+│   ├── notifications-bell.tsx
 │   ├── private-route.tsx
 │   ├── quit-confirm-dialog.tsx
 │   ├── transactions-table.tsx
@@ -95,9 +97,11 @@ src/
 │   └── auth-context.tsx     # AuthProvider + useAuth()
 ├── graphql/
 │   ├── user.ts              # authUser mutation, currentUser query
-│   └── transaction.ts       # userByEmail, createTransaction, transaction status, transactionsFromUser
+│   ├── transaction.ts       # userByEmail, createTransaction, transaction status, transactionsFromUser
+│   └── notification.ts      # notifications, unreadNotificationsCount, mark one / all as read
 └── lib/
     ├── apollo-client.ts     # Apollo client, auth header and unauthenticated handling
+    ├── dateFormatter.ts     # parseApiDate(), formatRelativeTime()
     ├── numberFormatter.ts   # formatMoney()
     └── utils.ts             # cn() class-name helper
 ```
@@ -109,32 +113,39 @@ src/
 | Component           | Description                                                                                                                                                                                                                                                  |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Container`         | Centered, max-width wrapper used for page layout.                                                                                                                                                                                                            |
-| `Header`            | Top bar with two variants: `simple` (logo only, for public pages) and `logged` (logo, user name and the quit button).                                                                                                                                       |
+| `Header`            | Top bar with two variants: `simple` (logo only, for public pages) and `logged` (logo, notifications bell, user name and the quit button).                                                                                                                   |
 | `LoginForm`         | Email and password form validated with `zod`. Calls `login()` from the auth context and shows an error toast if it fails.                                                                                                                                     |
 | `PrivateRoute`      | Route guard that renders the nested routes when a token exists, or redirects to `/login`.                                                                                                                                                                     |
+| `NotificationsBell` | Header bell with an unread badge (shows `9+` above nine) that refetches the count every 30 s. It opens a popover with the paginated notification list. Marking a notification as read refetches the count, and **Mark all as read** refetches both the list and the count. |
 | `QuitConfirmDialog` | Confirmation dialog shown before logging out.                                                                                                                                                                                                                |
 | `NewTransferDialog` | Multi-step transfer dialog (`new-transfer-modal.tsx`). Steps: **Set Account** (recipient lookup by email), **Set Value** (amount such as `10.00`), **Confirm** (creates the transaction), **Result** (polls the status every second for up to 15 s). |
-| `TransactionsTable` | Paginated table (10 per page) of the user's transactions, showing direction, details, amount, status and date. Refetches when a transfer finishes.                                                                                                           |
+| `TransactionsTable` | Paginated table (10 per page) of the user's transactions, showing direction, details, amount, status and date (in local time, see [Dates](#dates)). Refetches when a transfer finishes.                                                                |
 
 ### UI primitives (`src/components/ui`)
 
-Generated by [shadcn/ui](https://ui.shadcn.com) (style `radix-nova`, base color `neutral`; see `components.json`): `button`, `dialog`, `field`, `form`, `input`, `label`, `pagination`, `separator`, `sonner`, `table`. Treat them as vendored code and build app components on top of them rather than editing them directly. To add a new one:
+Generated by [shadcn/ui](https://ui.shadcn.com) (style `radix-nova`, base color `neutral`; see `components.json`): `button`, `dialog`, `field`, `form`, `input`, `label`, `pagination`, `popover`, `separator`, `sonner`, `table`. Treat them as vendored code and build app components on top of them rather than editing them directly. To add a new one:
 
 ```bash
 bunx shadcn@latest add <component>
 ```
+
+Check the generated file afterwards. When `popover` was added, the CLI wrote `import { cn } from "cn"` and installed an unrelated npm package called `cn`. Change the import to `@/lib/utils` and run `bun remove cn`.
 
 ### Auth context (`src/contexts/auth-context.tsx`)
 
 `AuthProvider` holds `{ user, token }`, saves them to `sessionStorage` (`auth_token` / `auth_user`), and exposes them through `useAuth()`:
 
 - `login(email, password)`: calls the `authUser` mutation, stores the session and navigates to `/`.
-- `logout()`: clears the session and navigates to `/login`.
+- `logout()`: clears the session and the Apollo cache, then navigates to `/login`. Clearing the cache stops per-user data, such as notification read state, from showing up for the next user who signs in on the same tab.
 - `refreshUser()`: fetches the current user again, for example to update the balance after a transfer.
 
 ### Money values
 
 Amounts are **integers in cents** everywhere: in the API and in frontend state. `formatMoney()` (`src/lib/numberFormatter.ts`) divides by 100 for display (`$ 1,234.56`). User input such as `12.50` is converted with `Math.round(Number(value) * 100)` before it is sent.
+
+### Dates
+
+The API sends timestamps in UTC but without a timezone marker (`2026-11-21T17:31:00`, with no `Z`). `new Date()` reads such a string as local time, which shifts it by the user's UTC offset. Always parse API timestamps with `parseApiDate()` (`src/lib/dateFormatter.ts`), which marks them as UTC. `formatRelativeTime()` turns a date into text such as `5 minutes ago`.
 
 ## Testing
 
@@ -161,8 +172,9 @@ No automated test framework is configured yet. To check a change:
    4. Sign in as `user1@loadtest.monex` and check that the balance and the transactions table load.
    5. Click **New Transfer**, search for `user2@loadtest.monex`, send `10.00` and confirm. The result step should show **Transfer complete**, the balance should drop and the table should show the new transaction.
    6. Try to send more than the balance. The result should be **Transfer refused**.
-   7. Sign in as `user2@loadtest.monex` and check that the transfer appears as received.
-   8. Click **Quit** and confirm. You should be redirected to `/login`, and opening `/` should redirect you back to `/login`.
+   7. Within 30 seconds the bell should show an unread badge. Open it: there should be a **Transaction refused** notification with the amount in dollars (for example `$ 500.00`). Click it and check that the badge count goes down. Then use **Mark all as read** and check that the badge disappears.
+   8. Sign in as `user2@loadtest.monex` and check that the transfer appears as received, and that the bell does not show user1's notification.
+   9. Click **Quit** and confirm. You should be redirected to `/login`, and opening `/` should redirect you back to `/login`.
 
 ## Build
 

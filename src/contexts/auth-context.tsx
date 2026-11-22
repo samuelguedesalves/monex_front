@@ -5,7 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router";
-import { useMutation, useLazyQuery } from "@apollo/client/react";
+import { useApolloClient, useMutation, useLazyQuery } from "@apollo/client/react";
 import {
   AUTH_USER_MUTATION,
   CURRENT_USER_QUERY,
@@ -34,6 +34,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const apolloClient = useApolloClient();
   const [state, setState] = useState<AuthState>(() => {
     try {
       const token = sessionStorage.getItem(TOKEN_KEY);
@@ -82,6 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // sessionStorage unavailable
     }
     setState({ user: null, token: null });
+    // Drop cached per-user data (e.g. notification read state) so the next login starts clean.
+    void apolloClient.clearStore();
     navigate("/login");
   }
 

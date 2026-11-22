@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { formatMoney } from "@/lib/numberFormatter";
+import { parseApiDate } from "@/lib/dateFormatter";
 import { useQuery } from "@apollo/client/react";
 import {
   Transaction,
@@ -139,7 +140,7 @@ export function TransactionsTable({ refreshKey = 0 }: TransactionsTableProps) {
               </TableCell>
               <TableCell>{capitalize(transaction.status)}</TableCell>
               <TableCell>
-                {new Date(transaction.processedAt).toLocaleString()}
+                {parseApiDate(transaction.processedAt).toLocaleString()}
               </TableCell>
             </TableRow>
           ))}

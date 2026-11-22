@@ -1,6 +1,7 @@
 import { User as UserIcon } from "lucide-react";
 import { Container } from "@/components/container";
 import { QuitConfirmDialog } from "@/components/quit-confirm-dialog";
+import { NotificationsBell } from "@/components/notifications-bell";
 import { useAuth } from "@/contexts/auth-context";
 import { useMemo } from "react";
 
@@ -39,6 +40,7 @@ function LoggedHeader() {
         <img src="./logo-white.svg" alt="Monex" />
 
         <div className="flex items-center gap-x-12">
+          <NotificationsBell />
           <div className="flex items-center gap-x-4">
             <UserIcon />
             <p>{userFullName}</p>
